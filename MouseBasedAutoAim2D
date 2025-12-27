@@ -1,0 +1,72 @@
+using System.Collections.Generic;
+using MoreMountains.TopDownEngine;
+using UnityEngine;
+
+/// <summary> 2D Auto Aim based on closest distance to the mouse cursor. </summary>
+namespace TopDownEngineExtensions {
+    public class MouseBasedAutoAim2D : WeaponAutoAim2D {
+        /// <summary>
+        /// Scans for potential targets: selects the closest unobstructed target to the mouse cursor (in world coordinates).
+        /// Return value: Returns true and sets the Target if a valid target is found; otherwise, returns false.
+        /// </summary>
+        protected override bool ScanForTargets() {
+            if(!_initialized)
+                Initialization();
+
+            Target = null;
+
+            // Get all colliders within the scan radius.
+            var colliders = Physics2D.OverlapCircleAll(_weapon.Owner.transform.position, ScanRadius, TargetsMask);
+            // No targets found.
+            if(colliders.Length == 0)
+                return false;
+
+            // Filter targets that are not blocked by obstacles.
+            var unobstructedTargets = new List<Transform>();
+            foreach(var col in colliders) {
+                // Calculate direction and distance from the ray origin to the target's center.
+                _boxcastDirection = (Vector2)(col.bounds.center - _raycastOrigin);
+                // Perform a BoxCast against the ObstacleMask. If nothing is hit, the target is considered visible.
+                var hit = Physics2D.BoxCast(_raycastOrigin, LineOfFireBoxcastSize, 0f, _boxcastDirection.normalized, _boxcastDirection.magnitude, ObstacleMask);
+                if(!hit)
+                    unobstructedTargets.Add(col.transform);
+            }
+
+            // No visible targets.
+            if(unobstructedTargets.Count == 0)
+                return false;
+
+            // Get the mouse position in the 2D world space.
+            Vector3 mouseWorld;
+            if(Camera.main != null) {
+                mouseWorld = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+                mouseWorld.z = 0f;
+            } else {
+                // Fallback to the owner's position if no main camera is found (to prevent errors).
+                mouseWorld = _weapon.Owner.transform.position;
+            }
+
+            // Find the target closest to the mouse cursor.
+            float smallestDistance = float.MaxValue;
+            Transform closestTarget = null;
+            for(var i = 0; i < unobstructedTargets.Count; i++) {
+                var targetTransform = unobstructedTargets[i];
+                var dist = Vector2.Distance(mouseWorld, targetTransform.position);
+                if(dist < smallestDistance) {
+                    smallestDistance = dist;
+                    closestTarget = targetTransform;
+                }
+            }
+
+            // If the closest target is found, set it and return true.
+            if(closestTarget != null) {
+                Target = closestTarget;
+                return true;
+            }
+
+            // No suitable target found.
+            Target = null;
+            return false;
+        }
+    }
+}
